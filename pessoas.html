@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contador de Pessoas</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f14;
+      --surface:  #161a23;
+      --border:   #252b3a;
+      --accent:   #00e5ff;
+      --accent2:  #7b5fff;
+      --text:     #e8eaf0;
+      --muted:    #6b7390;
+      --danger:   #ff4d6d;
+      --safe:     #00e5a0;
+      --ff-head:  'Space Grotesk', sans-serif;
+      --ff-mono:  'Space Mono', monospace;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--ff-head);
+      overflow-x: hidden;
+    }
+
+    /* ── Layout ── */
+    .shell {
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 20px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .status-pill {
+      margin-left: auto;
+      font-family: var(--ff-mono);
+      font-size: .65rem;
+      padding: 3px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all .3s;
+    }
+    .status-pill.ready   { border-color: var(--safe);   color: var(--safe);   }
+    .status-pill.running { border-color: var(--accent);  color: var(--accent); box-shadow: 0 0 8px var(--accent)44; }
+    .status-pill.error   { border-color: var(--danger);  color: var(--danger); }
+
+    /* ── Main ── */
+    main { padding: 20px 0; display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Counter card ── */
+    .counter-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .counter-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at top left, var(--accent2)18 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .count-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
+    .count-number {
+      font-family: var(--ff-mono);
+      font-size: 4.5rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--accent);
+      text-shadow: 0 0 32px var(--accent)66;
+      transition: transform .15s, color .3s;
+    }
+    .count-number.bump { transform: scale(1.12); }
+
+    .count-number.zero  { color: var(--muted); text-shadow: none; }
+    .count-number.many  { color: var(--danger); text-shadow: 0 0 32px var(--danger)66; }
+
+    .confidence-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 90px;
+    }
+    .conf-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    .conf-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .conf-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--accent);
+      transition: width .5s;
+      width: 0%;
+    }
+    .conf-pct {
+      font-family: var(--ff-mono);
+      font-size: .75rem;
+      color: var(--accent);
+    }
+
+    /* ── Video wrapper ── */
+    .video-wrap {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+      aspect-ratio: 4/3;
+    }
+    video, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    video { transform: scaleX(-1); }
+
+    .scan-line {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      animation: scan 2.4s ease-in-out infinite;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .scan-line.active { opacity: 1; }
+    @keyframes scan {
+      0%   { top: 0%;   opacity: 0; }
+      5%   { opacity: 1; }
+      95%  { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    .overlay-msg {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: #00000088;
+      backdrop-filter: blur(4px);
+      font-size: .85rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+    }
+    .overlay-msg svg { opacity: .4; }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 10px; }
+
+    .btn {
+      flex: 1;
+      height: 48px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--ff-head);
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, box-shadow .2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:hover:not(:disabled) {
+      background: var(--border);
+      border-color: var(--accent);
+    }
+    .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    .btn.primary {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
+    .btn.primary:hover:not(:disabled) {
+      background: #33eaff;
+      box-shadow: 0 0 20px var(--accent)55;
+    }
+
+    .btn.stop {
+      background: transparent;
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+    .btn.stop:hover:not(:disabled) {
+      background: var(--danger)22;
+    }
+
+    /* ── Camera toggle ── */
+    .cam-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: .78rem;
+      color: var(--muted);
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .cam-toggle:hover { border-color: var(--accent); color: var(--text); }
+    .cam-toggle input { accent-color: var(--accent); cursor: pointer; width: 16px; height: 16px; }
+
+    /* ── Stats bar ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-box .s-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+    .stat-box .s-val   { font-family: var(--ff-mono); font-size: 1.1rem; font-weight: 700; color: var(--text); }
+
+    /* ── Footer ── */
+    footer {
+      padding: 14px 0 20px;
+      border-top: 1px solid var(--border);
+      font-size: .68rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Loading overlay ── */
+    #loading-overlay {
+      position: fixed; inset: 0; z-index: 999;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .load-text { font-size: .8rem; color: var(--muted); font-family: var(--ff-mono); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .scan-line { animation: none; }
+      .spinner   { animation: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="load-text">carregando modelo…</div>
+</div>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-dot"></div>
+    <h1>Contador de Pessoas</h1>
+    <span class="status-pill" id="status-pill">aguardando</span>
+  </header>
+
+  <main>
+
+    <!-- Counter -->
+    <div class="counter-card">
+      <div>
+        <div class="count-label">Pessoas detectadas</div>
+        <div class="count-number zero" id="count">0</div>
+      </div>
+      <div class="confidence-bar">
+        <div class="conf-label">Confiança</div>
+        <div class="conf-track"><div class="conf-fill" id="conf-fill"></div></div>
+        <div class="conf-pct" id="conf-pct">—</div>
+      </div>
+    </div>
+
+    <!-- Video -->
+    <div class="video-wrap">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="canvas"></canvas>
+      <div class="scan-line" id="scan-line"></div>
+      <div class="overlay-msg" id="overlay-msg">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+        </svg>
+        Pressione <strong>Iniciar</strong> para ligar a câmera
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn primary" id="btn-start">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        Iniciar
+      </button>
+      <button class="btn stop" id="btn-stop" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        Parar
+      </button>
+    </div>
+
+    <!-- Camera toggle -->
+    <label class="cam-toggle">
+      <input type="checkbox" id="chk-rear" />
+      Usar câmera traseira (para apontar para o ambiente)
+    </label>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="s-label">Máximo</div>
+        <div class="s-val" id="stat-max">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="s-label">Frames</div>
+        <div class="s-val" id="stat-frames">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="s-label">FPS</div>
+        <div class="s-val" id="stat-fps">—</div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    Detecção local · nenhum dado enviado · TensorFlow.js + COCO-SSD<br/>
+    Funciona melhor com boa iluminação e pessoas totalmente visíveis
+  </footer>
+
+</div>
+
+<script>
+  (() => {
+    let model = null;
+    let stream = null;
+    let rafId  = null;
+    let running = false;
+
+    let maxCount  = 0;
+    let frameCount = 0;
+    let fpsTime   = performance.now();
+    let fpsFrames = 0;
+
+    const video    = document.getElementById('video');
+    const canvas   = document.getElementById('canvas');
+    const ctx      = canvas.getContext('2d');
+    const countEl  = document.getElementById('count');
+    const confFill = document.getElementById('conf-fill');
+    const confPct  = document.getElementById('conf-pct');
+    const statusPill = document.getElementById('status-pill');
+    const overlay  = document.getElementById('overlay-msg');
+    const scanLine = document.getElementById('scan-line');
+    const btnStart = document.getElementById('btn-start');
+    const btnStop  = document.getElementById('btn-stop');
+    const chkRear  = document.getElementById('chk-rear');
+    const statMax  = document.getElementById('stat-max');
+    const statFrames = document.getElementById('stat-frames');
+    const statFps  = document.getElementById('stat-fps');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    // ── Aviso se aberto via file:// ──
+    if (location.protocol === 'file:') {
+      loadingOverlay.innerHTML = `
+        <div style="max-width:320px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="1.5">
+            <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+          <p style="color:#ff4d6d;font-weight:700;font-size:.9rem">Arquivo aberto via file://</p>
+          <p style="color:#6b7390;font-size:.78rem;line-height:1.6">
+            O navegador bloqueia o acesso à câmera quando o arquivo é aberto diretamente.<br><br>
+            <strong style="color:#e8eaf0">Opções:</strong><br>
+            • Hospede no <strong>GitHub Pages</strong> ou <strong>Vercel</strong><br>
+            • Use um servidor local:<br>
+            <code style="background:#252b3a;padding:4px 8px;border-radius:6px;font-size:.72rem">npx serve .</code><br>
+            • No VS Code: extensão <strong>Live Server</strong>
+          </p>
+        </div>`;
+      return;
+    }
+
+    // ── Verifica suporte à API ──
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      loadingOverlay.innerHTML = `
+        <div style="max-width:300px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center">
+          <p style="color:#ff4d6d;font-weight:700">Câmera não suportada</p>
+          <p style="color:#6b7390;font-size:.8rem">Este navegador não suporta acesso à câmera. Use Chrome, Safari ou Firefox atualizados via HTTPS.</p>
+        </div>`;
+      return;
+    }
+
+    // ── Load model on page load ──
+    cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(m => {
+      model = m;
+      loadingOverlay.classList.add('hidden');
+      setStatus('ready', 'pronto');
+    }).catch(err => {
+      loadingOverlay.classList.add('hidden');
+      setStatus('error', 'erro no modelo');
+      console.error(err);
+    });
+
+    function setStatus(cls, txt) {
+      statusPill.className = 'status-pill ' + cls;
+      statusPill.textContent = txt;
+    }
+
+    // ── Start ──
+    btnStart.addEventListener('click', async () => {
+      if (!model) return;
+      const facing = chkRear.checked ? 'environment' : 'user';
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        overlay.style.display = 'none';
+        scanLine.classList.add('active');
+        btnStart.disabled = true;
+        btnStop.disabled  = false;
+        chkRear.disabled  = true;
+        setStatus('running', 'ao vivo');
+        running = true;
+        fpsTime = performance.now();
+        fpsFrames = 0;
+        detect();
+      } catch (e) {
+        setStatus('error', 'sem acesso');
+        overlay.innerHTML = '⚠️ Permissão de câmera negada ou indisponível.';
+        overlay.style.display = '';
+        console.error(e);
+      }
+    });
+
+    // ── Stop ──
+    btnStop.addEventListener('click', stop);
+    function stop() {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      overlay.innerHTML = `
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+        </svg>
+        Pressione <strong>Iniciar</strong> para ligar a câmera`;
+      overlay.style.display = '';
+      scanLine.classList.remove('active');
+      btnStart.disabled = false;
+      btnStop.disabled  = true;
+      chkRear.disabled  = false;
+      setStatus('ready', 'pronto');
+      setCount(0, 0);
+    }
+
+    // ── Detection loop ──
+    async function detect() {
+      if (!running) return;
+
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+
+      // Mirror canvas to match mirrored video (user-facing)
+      if (!chkRear.checked) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+
+      const predictions = await model.detect(canvas);
+      const people = predictions.filter(p => p.class === 'person' && p.score >= 0.45);
+
+      // Draw boxes
+      if (!chkRear.checked) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
+      }
+      drawBoxes(people);
+      if (!chkRear.checked) ctx.restore();
+
+      // Update UI
+      const avgConf = people.length
+        ? people.reduce((s, p) => s + p.score, 0) / people.length
+        : 0;
+
+      setCount(people.length, avgConf);
+
+      // FPS
+      fpsFrames++;
+      frameCount++;
+      statFrames.textContent = frameCount;
+      const now = performance.now();
+      if (now - fpsTime >= 1000) {
+        statFps.textContent = fpsFrames;
+        fpsFrames = 0;
+        fpsTime   = now;
+      }
+
+      rafId = requestAnimationFrame(detect);
+    }
+
+    function setCount(n, conf) {
+      const prev = parseInt(countEl.textContent) || 0;
+      countEl.textContent = n;
+      countEl.className = 'count-number' + (n === 0 ? ' zero' : n >= 5 ? ' many' : '');
+
+      if (n !== prev) {
+        countEl.classList.add('bump');
+        setTimeout(() => countEl.classList.remove('bump'), 160);
+      }
+
+      if (n > maxCount) { maxCount = n; statMax.textContent = maxCount; }
+
+      const pct = Math.round(conf * 100);
+      confFill.style.width = (n ? pct : 0) + '%';
+      confPct.textContent  = n ? pct + '%' : '—';
+    }
+
+    function drawBoxes(people) {
+      people.forEach(p => {
+        const [x, y, w, h] = p.bbox;
+        const alpha = 0.5 + p.score * 0.5;
+
+        // Box glow
+        ctx.shadowColor   = '#00e5ff';
+        ctx.shadowBlur    = 12;
+        ctx.strokeStyle   = `rgba(0, 229, 255, ${alpha})`;
+        ctx.lineWidth     = 2;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 6);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Label background
+        const label  = `pessoa ${Math.round(p.score * 100)}%`;
+        const fSize  = Math.max(11, Math.min(14, w / 8));
+        ctx.font     = `600 ${fSize}px 'Space Grotesk', sans-serif`;
+        const tw     = ctx.measureText(label).width;
+        const lh     = fSize + 8;
+        const ly     = y > lh + 2 ? y - lh - 2 : y + 2;
+
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
+        ctx.beginPath();
+        ctx.roundRect(x, ly, tw + 12, lh, 4);
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(0, 229, 255, ${alpha})`;
+        ctx.fillText(label, x + 6, ly + lh - 5);
+      });
+    }
+
+    // Prevent screen sleep while running (if supported)
+    let wakeLock = null;
+    btnStart.addEventListener('click', async () => {
+      try {
+        if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+      } catch (_) {}
+    });
+    btnStop.addEventListener('click', () => {
+      if (wakeLock) { wakeLock.release(); wakeLock = null; 
