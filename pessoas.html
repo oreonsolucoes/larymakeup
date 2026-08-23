@@ -1,641 +1,1092 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contador de Pessoas</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Contador de Pessoas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+:root{
+  --bg:#0a0c10;--surface:#12151d;--surface2:#1a1f2e;--border:#22283a;
+  --accent:#00e5ff;--accent2:#7b5fff;--accent3:#00e5a0;
+  --text:#e8eaf0;--text2:#a0a8c0;--muted:#505870;
+  --danger:#ff4d6d;--warn:#ffb347;
+  --ff:'Space Grotesk',sans-serif;--ffm:'Space Mono',monospace;
+  --r:14px;--r2:10px;
+}
 
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--ff);overflow-x:hidden}
 
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── shell ── */
+.shell{min-height:100dvh;max-width:700px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:0}
 
-    :root {
-      --bg:       #0d0f14;
-      --surface:  #161a23;
-      --border:   #252b3a;
-      --accent:   #00e5ff;
-      --accent2:  #7b5fff;
-      --text:     #e8eaf0;
-      --muted:    #6b7390;
-      --danger:   #ff4d6d;
-      --safe:     #00e5a0;
-      --ff-head:  'Space Grotesk', sans-serif;
-      --ff-mono:  'Space Mono', monospace;
-    }
+/* ── header ── */
+header{
+  padding:18px 0 14px;display:flex;align-items:center;gap:10px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;
+  background:var(--bg);z-index:10;
+}
+.pulse{width:9px;height:9px;border-radius:50%;background:var(--accent);flex-shrink:0;
+  box-shadow:0 0 0 0 var(--accent);animation:pulse-ring 2.5s infinite}
+.pulse.off{background:var(--muted);box-shadow:none;animation:none}
+@keyframes pulse-ring{
+  0%{box-shadow:0 0 0 0 rgba(0,229,255,.6)}
+  70%{box-shadow:0 0 0 8px rgba(0,229,255,0)}
+  100%{box-shadow:0 0 0 0 rgba(0,229,255,0)}
+}
+header h1{font-size:.9rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.pill{
+  font-family:var(--ffm);font-size:.6rem;padding:3px 9px;border-radius:99px;
+  border:1px solid var(--border);color:var(--muted);transition:all .3s;white-space:nowrap
+}
+.pill.ready  {border-color:var(--accent3);color:var(--accent3)}
+.pill.live   {border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px rgba(0,229,255,.3)}
+.pill.error  {border-color:var(--danger);color:var(--danger)}
+.pill.loading{border-color:var(--warn);color:var(--warn)}
 
-    html, body {
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--ff-head);
-      overflow-x: hidden;
-    }
+/* ── main ── */
+main{flex:1;padding:16px 0 24px;display:flex;flex-direction:column;gap:16px}
 
-    /* ── Layout ── */
-    .shell {
-      min-height: 100dvh;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 0 16px;
-    }
+/* ── big counter ── */
+.counter-hero{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:22px 22px 18px;display:grid;grid-template-columns:1fr auto;gap:16px;
+  align-items:center;position:relative;overflow:hidden
+}
+.counter-hero::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 80% at 0% 0%, rgba(123,95,255,.12),transparent 70%);
+}
+.count-wrap{display:flex;align-items:baseline;gap:10px}
+.count-num{
+  font-family:var(--ffm);font-size:5rem;font-weight:700;line-height:1;
+  color:var(--accent);text-shadow:0 0 40px rgba(0,229,255,.5);
+  transition:transform .12s ease,color .3s,text-shadow .3s
+}
+.count-num.bump{transform:scale(1.1)}
+.count-num.zero{color:var(--muted);text-shadow:none}
+.count-num.crowd{color:var(--danger);text-shadow:0 0 40px rgba(255,77,109,.5)}
+.count-unit{font-size:.8rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;align-self:flex-end;padding-bottom:.4rem}
 
-    /* ── Header ── */
-    header {
-      padding: 20px 0 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid var(--border);
-    }
-    .logo-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 10px var(--accent);
-      flex-shrink: 0;
-    }
-    header h1 {
-      font-size: 1rem;
-      font-weight: 600;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      color: var(--text);
-    }
-    .status-pill {
-      margin-left: auto;
-      font-family: var(--ff-mono);
-      font-size: .65rem;
-      padding: 3px 10px;
-      border-radius: 99px;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      transition: all .3s;
-    }
-    .status-pill.ready   { border-color: var(--safe);   color: var(--safe);   }
-    .status-pill.running { border-color: var(--accent);  color: var(--accent); box-shadow: 0 0 8px var(--accent)44; }
-    .status-pill.error   { border-color: var(--danger);  color: var(--danger); }
+.count-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
 
-    /* ── Main ── */
-    main { padding: 20px 0; display: flex; flex-direction: column; gap: 20px; }
+.right-stats{display:flex;flex-direction:column;gap:10px;align-items:flex-end;min-width:80px}
+.mini-stat{text-align:right}
+.mini-stat .ms-val{font-family:var(--ffm);font-size:1.1rem;font-weight:700;color:var(--text)}
+.mini-stat .ms-lbl{font-size:.58rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
 
-    /* ── Counter card ── */
-    .counter-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 28px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      position: relative;
-      overflow: hidden;
-    }
-    .counter-card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse at top left, var(--accent2)18 0%, transparent 60%);
-      pointer-events: none;
-    }
-    .count-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 4px; }
-    .count-number {
-      font-family: var(--ff-mono);
-      font-size: 4.5rem;
-      font-weight: 700;
-      line-height: 1;
-      color: var(--accent);
-      text-shadow: 0 0 32px var(--accent)66;
-      transition: transform .15s, color .3s;
-    }
-    .count-number.bump { transform: scale(1.12); }
+/* confidence arc */
+.conf-arc-wrap{display:flex;flex-direction:column;align-items:center;gap:4px}
+.conf-arc-wrap svg{overflow:visible}
+.conf-arc-wrap .ca-val{font-family:var(--ffm);font-size:.72rem;color:var(--accent)}
+.conf-arc-wrap .ca-lbl{font-size:.58rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 
-    .count-number.zero  { color: var(--muted); text-shadow: none; }
-    .count-number.many  { color: var(--danger); text-shadow: 0 0 32px var(--danger)66; }
+/* ── mode selector ── */
+.mode-row{display:flex;gap:8px}
+.mode-btn{
+  flex:1;padding:10px 8px;border-radius:var(--r2);border:1px solid var(--border);
+  background:var(--surface);color:var(--text2);font-family:var(--ff);font-size:.75rem;
+  font-weight:500;cursor:pointer;transition:all .2s;text-align:center;line-height:1.3
+}
+.mode-btn:hover{border-color:var(--accent);color:var(--text)}
+.mode-btn.active{border-color:var(--accent2);background:rgba(123,95,255,.12);color:var(--accent);font-weight:600}
+.mode-btn .mb-icon{font-size:1.1rem;display:block;margin-bottom:3px}
+.mode-btn .mb-sub{font-size:.6rem;color:var(--muted);display:block}
 
-    .confidence-bar {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 90px;
-    }
-    .conf-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-    .conf-track {
-      height: 6px;
-      background: var(--border);
-      border-radius: 99px;
-      overflow: hidden;
-    }
-    .conf-fill {
-      height: 100%;
-      border-radius: 99px;
-      background: var(--accent);
-      transition: width .5s;
-      width: 0%;
-    }
-    .conf-pct {
-      font-family: var(--ff-mono);
-      font-size: .75rem;
-      color: var(--accent);
-    }
+/* ── video ── */
+.video-section{display:flex;flex-direction:column;gap:10px}
+.video-wrap{
+  position:relative;border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--border);background:#000;aspect-ratio:16/9
+}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video{transform:scaleX(-1)}
+video.rear{transform:none}
 
-    /* ── Video wrapper ── */
-    .video-wrap {
-      position: relative;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      background: #000;
-      aspect-ratio: 4/3;
-    }
-    video, canvas {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    video { transform: scaleX(-1); }
+.scanbar{
+  position:absolute;top:0;left:0;right:0;height:2px;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  animation:scanmove 2.8s ease-in-out infinite;transition:opacity .4s
+}
+.scanbar.on{opacity:1}
+@keyframes scanmove{
+  0%{top:0%;opacity:0}4%{opacity:1}96%{opacity:1}100%{top:100%;opacity:0}
+}
 
-    .scan-line {
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, var(--accent), transparent);
-      animation: scan 2.4s ease-in-out infinite;
-      opacity: 0;
-      pointer-events: none;
-    }
-    .scan-line.active { opacity: 1; }
-    @keyframes scan {
-      0%   { top: 0%;   opacity: 0; }
-      5%   { opacity: 1; }
-      95%  { opacity: 1; }
-      100% { top: 100%; opacity: 0; }
-    }
+/* corner brackets */
+.corner{position:absolute;width:18px;height:18px;pointer-events:none;opacity:0;transition:opacity .4s}
+.corner.on{opacity:.7}
+.corner.tl{top:8px;left:8px;border-top:2px solid var(--accent);border-left:2px solid var(--accent)}
+.corner.tr{top:8px;right:8px;border-top:2px solid var(--accent);border-right:2px solid var(--accent)}
+.corner.bl{bottom:8px;left:8px;border-bottom:2px solid var(--accent);border-left:2px solid var(--accent)}
+.corner.br{bottom:8px;right:8px;border-bottom:2px solid var(--accent);border-right:2px solid var(--accent)}
 
-    .overlay-msg {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      background: #00000088;
-      backdrop-filter: blur(4px);
-      font-size: .85rem;
-      color: var(--muted);
-      text-align: center;
-      padding: 24px;
-    }
-    .overlay-msg svg { opacity: .4; }
+.overlay-msg{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:12px;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);
+  font-size:.82rem;color:var(--text2);text-align:center;padding:24px;z-index:5
+}
+.overlay-msg .om-icon{font-size:2rem;opacity:.5}
 
-    /* ── Controls ── */
-    .controls { display: flex; gap: 10px; }
+/* live count overlay on video */
+.video-count{
+  position:absolute;top:10px;left:10px;z-index:4;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(8px);
+  border:1px solid rgba(0,229,255,.3);border-radius:8px;
+  padding:6px 12px;display:flex;flex-direction:column;align-items:center;
+  pointer-events:none;opacity:0;transition:opacity .4s
+}
+.video-count.on{opacity:1}
+.video-count .vc-n{font-family:var(--ffm);font-size:1.5rem;font-weight:700;color:var(--accent);line-height:1}
+.video-count .vc-l{font-size:.55rem;text-transform:uppercase;letter-spacing:.07em;color:var(--text2)}
 
-    .btn {
-      flex: 1;
-      height: 48px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-family: var(--ff-head);
-      font-size: .85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .2s, border-color .2s, box-shadow .2s;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-    }
-    .btn:hover:not(:disabled) {
-      background: var(--border);
-      border-color: var(--accent);
-    }
-    .btn:disabled { opacity: .35; cursor: not-allowed; }
+/* ── controls ── */
+.controls{display:flex;gap:8px}
+.btn{
+  flex:1;height:46px;border-radius:var(--r2);border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-family:var(--ff);font-size:.82rem;
+  font-weight:600;cursor:pointer;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;gap:7px
+}
+.btn:hover:not(:disabled){background:var(--surface2);border-color:var(--accent)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn.primary:hover:not(:disabled){background:#2aeeff;box-shadow:0 0 20px rgba(0,229,255,.35)}
+.btn.stop{border-color:rgba(255,77,109,.4);color:var(--danger)}
+.btn.stop:hover:not(:disabled){background:rgba(255,77,109,.08)}
+.btn.icon-only{flex:none;width:46px;padding:0}
 
-    .btn.primary {
-      background: var(--accent);
-      color: #000;
-      border-color: var(--accent);
-    }
-    .btn.primary:hover:not(:disabled) {
-      background: #33eaff;
-      box-shadow: 0 0 20px var(--accent)55;
-    }
+/* ── settings panel ── */
+.settings{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r);overflow:hidden;transition:all .3s
+}
+.settings-head{
+  padding:12px 16px;display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;user-select:none
+}
+.settings-head span{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text2)}
+.settings-head .chevron{transition:transform .3s;color:var(--muted)}
+.settings.open .chevron{transform:rotate(180deg)}
+.settings-body{display:none;padding:0 16px 16px;display:flex;flex-direction:column;gap:14px}
+.settings.closed .settings-body{display:none}
 
-    .btn.stop {
-      background: transparent;
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-    .btn.stop:hover:not(:disabled) {
-      background: var(--danger)22;
-    }
+.row-setting{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.row-setting label{font-size:.78rem;color:var(--text2);line-height:1.4}
+.row-setting .hint{font-size:.65rem;color:var(--muted);display:block;margin-top:1px}
 
-    /* ── Camera toggle ── */
-    .cam-toggle {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      font-size: .78rem;
-      color: var(--muted);
-      cursor: pointer;
-      transition: border-color .2s;
-    }
-    .cam-toggle:hover { border-color: var(--accent); color: var(--text); }
-    .cam-toggle input { accent-color: var(--accent); cursor: pointer; width: 16px; height: 16px; }
+/* toggle switch */
+.toggle{position:relative;width:38px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-track{
+  position:absolute;inset:0;background:var(--border);border-radius:99px;
+  cursor:pointer;transition:background .2s
+}
+.toggle input:checked+.toggle-track{background:var(--accent)}
+.toggle-track::after{
+  content:'';position:absolute;width:16px;height:16px;border-radius:50%;
+  background:#fff;top:3px;left:3px;transition:transform .2s
+}
+.toggle input:checked+.toggle-track::after{transform:translateX(16px)}
 
-    /* ── Stats bar ── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-    }
-    .stat-box {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .stat-box .s-label { font-size: .62rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-    .stat-box .s-val   { font-family: var(--ff-mono); font-size: 1.1rem; font-weight: 700; color: var(--text); }
+/* slider */
+.slider-wrap{display:flex;flex-direction:column;gap:6px;flex:1;min-width:120px}
+.slider-wrap input[type=range]{
+  -webkit-appearance:none;width:100%;height:4px;border-radius:99px;
+  background:var(--border);outline:none;cursor:pointer
+}
+.slider-wrap input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid var(--bg)
+}
+.slider-label{display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted)}
+.slider-label span:last-child{color:var(--accent);font-family:var(--ffm)}
 
-    /* ── Footer ── */
-    footer {
-      padding: 14px 0 20px;
-      border-top: 1px solid var(--border);
-      font-size: .68rem;
-      color: var(--muted);
-      text-align: center;
-      line-height: 1.6;
-    }
+/* ── chart ── */
+.chart-wrap{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;display:flex;flex-direction:column;gap:10px
+}
+.chart-head{display:flex;align-items:center;justify-content:space-between}
+.chart-head h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);font-weight:600}
+.chart-head .clr-btn{
+  font-size:.65rem;font-family:var(--ffm);color:var(--muted);cursor:pointer;
+  border:none;background:none;padding:2px 6px;border-radius:4px;transition:color .2s
+}
+.chart-head .clr-btn:hover{color:var(--danger)}
+canvas#chart{width:100%!important;height:90px!important;display:block}
 
-    /* ── Loading overlay ── */
-    #loading-overlay {
-      position: fixed; inset: 0; z-index: 999;
-      background: var(--bg);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 16px;
-    }
-    #loading-overlay.hidden { display: none; }
-    .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .load-text { font-size: .8rem; color: var(--muted); font-family: var(--ff-mono); }
+/* ── stats grid ── */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);
+  padding:12px 10px;display:flex;flex-direction:column;gap:3px
+}
+.stat-card .sc-val{font-family:var(--ffm);font-size:1.15rem;font-weight:700;color:var(--text)}
+.stat-card .sc-lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.stat-card.accent .sc-val{color:var(--accent)}
+.stat-card.accent2 .sc-val{color:var(--accent2)}
+.stat-card.accent3 .sc-val{color:var(--accent3)}
 
-    @media (prefers-reduced-motion: reduce) {
-      .scan-line { animation: none; }
-      .spinner   { animation: none; }
-    }
-  </style>
+/* ── log ── */
+.log-wrap{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px
+}
+.log-head{display:flex;align-items:center;justify-content:space-between}
+.log-head h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);font-weight:600}
+.log-list{
+  max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent
+}
+.log-entry{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-size:.72rem;padding:4px 0;border-bottom:1px solid var(--border);gap:8px
+}
+.log-entry:last-child{border-bottom:none}
+.log-entry .le-time{font-family:var(--ffm);color:var(--muted);flex-shrink:0}
+.log-entry .le-val{font-family:var(--ffm);font-weight:700;color:var(--accent)}
+.log-entry .le-delta{font-size:.65rem}
+.log-entry .le-delta.up{color:var(--danger)}
+.log-entry .le-delta.dn{color:var(--accent3)}
+.log-entry .le-delta.eq{color:var(--muted)}
+.log-empty{font-size:.72rem;color:var(--muted);text-align:center;padding:8px 0}
+
+/* ── footer ── */
+footer{
+  padding:12px 0 20px;border-top:1px solid var(--border);
+  font-size:.65rem;color:var(--muted);text-align:center;line-height:1.8
+}
+
+/* ── loading overlay ── */
+#loading-overlay{
+  position:fixed;inset:0;z-index:999;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px
+}
+#loading-overlay.hidden{display:none}
+.spinner{
+  width:36px;height:36px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-text{font-size:.75rem;color:var(--muted);font-family:var(--ffm)}
+.load-steps{display:flex;flex-direction:column;gap:4px;align-items:center}
+.load-step{font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.load-step .ls-dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0}
+.load-step.done .ls-dot{background:var(--accent3)}
+.load-step.active .ls-dot{background:var(--warn);animation:pulse-ring 1s infinite}
+.load-step.error .ls-dot{background:var(--danger)}
+
+@media(prefers-reduced-motion:reduce){
+  .scanbar,.pulse,.spinner{animation:none}
+}
+</style>
 </head>
 <body>
 
-<!-- Loading -->
 <div id="loading-overlay">
   <div class="spinner"></div>
-  <div class="load-text">carregando modelo…</div>
+  <div class="load-text">inicializando…</div>
+  <div class="load-steps">
+    <div class="load-step active" id="ls-tf"><div class="ls-dot"></div>TensorFlow.js</div>
+    <div class="load-step" id="ls-coco"><div class="ls-dot"></div>Modelo COCO-SSD</div>
+    <div class="load-step" id="ls-blaze"><div class="ls-dot"></div>Modelo BlazeFace</div>
+  </div>
 </div>
 
 <div class="shell">
 
-  <!-- Header -->
-  <header>
-    <div class="logo-dot"></div>
-    <h1>Contador de Pessoas</h1>
-    <span class="status-pill" id="status-pill">aguardando</span>
-  </header>
+<header>
+  <div class="pulse off" id="hdr-pulse"></div>
+  <h1>Contador de Pessoas</h1>
+  <div class="hdr-right">
+    <span class="pill loading" id="status-pill">carregando</span>
+  </div>
+</header>
 
-  <main>
+<main>
 
-    <!-- Counter -->
-    <div class="counter-card">
-      <div>
-        <div class="count-label">Pessoas detectadas</div>
-        <div class="count-number zero" id="count">0</div>
-      </div>
-      <div class="confidence-bar">
-        <div class="conf-label">Confiança</div>
-        <div class="conf-track"><div class="conf-fill" id="conf-fill"></div></div>
-        <div class="conf-pct" id="conf-pct">—</div>
+  <!-- COUNTER HERO -->
+  <div class="counter-hero">
+    <div>
+      <div class="count-label">Pessoas detectadas</div>
+      <div class="count-wrap">
+        <div class="count-num zero" id="count-num">0</div>
+        <div class="count-unit">pessoas</div>
       </div>
     </div>
+    <div class="right-stats">
+      <div class="conf-arc-wrap">
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="#22283a" stroke-width="4"/>
+          <circle id="arc-fill" cx="28" cy="28" r="22" fill="none" stroke="#00e5ff" stroke-width="4"
+            stroke-dasharray="138.2" stroke-dashoffset="138.2"
+            stroke-linecap="round" transform="rotate(-90 28 28)"
+            style="transition:stroke-dashoffset .5s"/>
+          <text x="28" y="32" text-anchor="middle" font-family="Space Mono,monospace" font-size="10" fill="#e8eaf0" id="arc-text">—</text>
+        </svg>
+        <div class="ca-val" id="conf-val">—</div>
+        <div class="ca-lbl">confiança</div>
+      </div>
+      <div class="mini-stat">
+        <div class="ms-val" id="stat-max">0</div>
+        <div class="ms-lbl">máx. sessão</div>
+      </div>
+    </div>
+  </div>
 
-    <!-- Video -->
-    <div class="video-wrap">
+  <!-- MODE -->
+  <div class="mode-row">
+    <button class="mode-btn active" id="mode-dual" onclick="setMode('dual')">
+      <span class="mb-icon">🧠</span>Duplo
+      <span class="mb-sub">COCO + Face</span>
+    </button>
+    <button class="mode-btn" id="mode-body" onclick="setMode('body')">
+      <span class="mb-icon">🚶</span>Corpo
+      <span class="mb-sub">COCO-SSD</span>
+    </button>
+    <button class="mode-btn" id="mode-face" onclick="setMode('face')">
+      <span class="mb-icon">👤</span>Rosto
+      <span class="mb-sub">BlazeFace</span>
+    </button>
+  </div>
+
+  <!-- VIDEO -->
+  <div class="video-section">
+    <div class="video-wrap" id="video-wrap">
       <video id="video" autoplay muted playsinline></video>
       <canvas id="canvas"></canvas>
-      <div class="scan-line" id="scan-line"></div>
+      <div class="scanbar" id="scanbar"></div>
+      <div class="corner tl" id="c-tl"></div>
+      <div class="corner tr" id="c-tr"></div>
+      <div class="corner bl" id="c-bl"></div>
+      <div class="corner br" id="c-br"></div>
+      <div class="video-count" id="video-count">
+        <div class="vc-n" id="vc-num">0</div>
+        <div class="vc-l">pessoas</div>
+      </div>
       <div class="overlay-msg" id="overlay-msg">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-        </svg>
-        Pressione <strong>Iniciar</strong> para ligar a câmera
+        <div class="om-icon">📷</div>
+        <div>Pressione <strong>Iniciar</strong> para ligar a câmera</div>
       </div>
     </div>
 
-    <!-- Controls -->
+    <!-- CONTROLS -->
     <div class="controls">
       <button class="btn primary" id="btn-start">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         Iniciar
       </button>
       <button class="btn stop" id="btn-stop" disabled>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
         Parar
       </button>
+      <button class="btn icon-only" id="btn-cam" title="Alternar câmera" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 7h-3l-2-3H9L7 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/>
+          <circle cx="12" cy="13" r="3"/>
+        </svg>
+      </button>
     </div>
+  </div>
 
-    <!-- Camera toggle -->
-    <label class="cam-toggle">
-      <input type="checkbox" id="chk-rear" />
-      Usar câmera traseira (para apontar para o ambiente)
-    </label>
-
-    <!-- Stats -->
-    <div class="stats-row">
-      <div class="stat-box">
-        <div class="s-label">Máximo</div>
-        <div class="s-val" id="stat-max">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="s-label">Frames</div>
-        <div class="s-val" id="stat-frames">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="s-label">FPS</div>
-        <div class="s-val" id="stat-fps">—</div>
-      </div>
+  <!-- SETTINGS -->
+  <div class="settings open" id="settings-panel">
+    <div class="settings-head" id="settings-toggle">
+      <span>⚙ Configurações</span>
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
     </div>
+    <div class="settings-body" id="settings-body">
 
-  </main>
+      <div class="row-setting">
+        <label>Câmera traseira
+          <span class="hint">Melhor para apontar para a plateia</span>
+        </label>
+        <label class="toggle"><input type="checkbox" id="chk-rear" checked>
+          <div class="toggle-track"></div></label>
+      </div>
 
-  <footer>
-    Detecção local · nenhum dado enviado · TensorFlow.js + COCO-SSD<br/>
-    Funciona melhor com boa iluminação e pessoas totalmente visíveis
-  </footer>
+      <div class="row-setting">
+        <label>Espelhar vídeo
+          <span class="hint">Para câmera frontal (selfie)</span>
+        </label>
+        <label class="toggle"><input type="checkbox" id="chk-mirror">
+          <div class="toggle-track"></div></label>
+      </div>
 
-</div>
+      <div class="row-setting">
+        <div class="slider-wrap">
+          <div class="slider-label">
+            <span>Confiança mínima</span>
+            <span id="lbl-threshold">40%</span>
+          </div>
+          <input type="range" id="sl-threshold" min="20" max="90" value="40" step="5"/>
+          <div class="slider-label">
+            <span style="color:var(--accent3)">menos restrito</span>
+            <span style="color:var(--danger)">mais restrito</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-setting">
+        <div class="slider-wrap">
+          <div class="slider-label">
+            <span>Intervalo de detecção</span>
+            <span id="lbl-interval">200ms</span>
+          </div>
+          <input type="range" id="sl-interval" min="100" max="1000" value="200" step="50"/>
+          <div class="slider-label">
+            <span style="color:var(--danger)">+ consumo</span>
+            <span style="color:var(--accent3)">+ economia</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row-setting">
+        <label>Mostrar bounding boxes</label>
+        <label class="toggle"><input type="checkbox" id="chk-boxes" checked>
+          <div class="toggle-track"></div></label>
+      </div>
+
+      <div class="row-setting">
+        <label>Suavizar contagem
+          <span class="hint">Média dos últimos 5 frames</span>
+        </label>
+        <label class="toggle"><input type="checkbox" id="chk-smooth" checked>
+          <div class="toggle-track"></div></label>
+      </div>
+
+      <div class="row-setting">
+        <label>Resolução da câmera</label>
+        <select id="sel-res" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--ff);font-size:.75rem;padding:5px 8px;border-radius:6px;cursor:pointer">
+          <option value="480">480p (rápido)</option>
+          <option value="720" selected>720p (padrão)</option>
+          <option value="1080">1080p (lento)</option>
+        </select>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="chart-wrap">
+    <div class="chart-head">
+      <h3>📈 Histórico da sessão</h3>
+      <button class="clr-btn" id="btn-clr-chart">limpar</button>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card accent">
+      <div class="sc-val" id="sc-cur">0</div>
+      <div class="sc-lbl">atual</div>
+    </div>
+    <div class="stat-card accent2">
+      <div class="sc-val" id="sc-max">0</div>
+      <div class="sc-lbl">máximo</div>
+    </div>
+    <div class="stat-card accent3">
+      <div class="sc-val" id="sc-avg">—</div>
+      <div class="sc-lbl">média</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-val" id="sc-frames">0</div>
+      <div class="sc-lbl">frames</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-val" id="sc-fps">—</div>
+      <div class="sc-lbl">fps</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-val" id="sc-time">00:00</div>
+      <div class="sc-lbl">tempo</div>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="log-wrap">
+    <div class="log-head">
+      <h3>📋 Registro de variações</h3>
+      <button class="clr-btn" id="btn-clr-log" style="background:none;border:none;cursor:pointer;font-size:.65rem;color:var(--muted)">limpar</button>
+    </div>
+    <div class="log-list" id="log-list">
+      <div class="log-empty">Nenhuma variação registrada ainda.</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  Processamento 100% local · nenhum dado enviado · TensorFlow.js · COCO-SSD · BlazeFace<br/>
+  Melhor precisão com boa iluminação, câmera traseira e pessoas visíveis de frente ou de cima
+</footer>
+
+</div><!-- /shell -->
 
 <script>
-  (() => {
-    let model = null;
-    let stream = null;
-    let rafId  = null;
-    let running = false;
+(async () => {
 
-    let maxCount  = 0;
-    let frameCount = 0;
-    let fpsTime   = performance.now();
-    let fpsFrames = 0;
+// ── State ──────────────────────────────────────────────
+let modelCoco   = null;
+let modelBlaze  = null;
+let stream      = null;
+let rafId       = null;
+let running     = false;
+let mode        = 'dual'; // 'dual' | 'body' | 'face'
+let facingMode  = 'environment';
 
-    const video    = document.getElementById('video');
-    const canvas   = document.getElementById('canvas');
-    const ctx      = canvas.getContext('2d');
-    const countEl  = document.getElementById('count');
-    const confFill = document.getElementById('conf-fill');
-    const confPct  = document.getElementById('conf-pct');
-    const statusPill = document.getElementById('status-pill');
-    const overlay  = document.getElementById('overlay-msg');
-    const scanLine = document.getElementById('scan-line');
-    const btnStart = document.getElementById('btn-start');
-    const btnStop  = document.getElementById('btn-stop');
-    const chkRear  = document.getElementById('chk-rear');
-    const statMax  = document.getElementById('stat-max');
-    const statFrames = document.getElementById('stat-frames');
-    const statFps  = document.getElementById('stat-fps');
-    const loadingOverlay = document.getElementById('loading-overlay');
+let threshold     = 0.40;
+let detInterval   = 200;
+let showBoxes     = true;
+let smoothing     = true;
+let lastDetect    = 0;
 
-    // ── Aviso se aberto via file:// ──
-    if (location.protocol === 'file:') {
-      loadingOverlay.innerHTML = `
-        <div style="max-width:320px;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="1.5">
-            <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-          </svg>
-          <p style="color:#ff4d6d;font-weight:700;font-size:.9rem">Arquivo aberto via file://</p>
-          <p style="color:#6b7390;font-size:.78rem;line-height:1.6">
-            O navegador bloqueia o acesso à câmera quando o arquivo é aberto diretamente.<br><br>
-            <strong style="color:#e8eaf0">Opções:</strong><br>
-            • Hospede no <strong>GitHub Pages</strong> ou <strong>Vercel</strong><br>
-            • Use um servidor local:<br>
-            <code style="background:#252b3a;padding:4px 8px;border-radius:6px;font-size:.72rem">npx serve .</code><br>
-            • No VS Code: extensão <strong>Live Server</strong>
-          </p>
-        </div>`;
-      return;
-    }
+// smoothing buffer
+const SMOOTH_BUF  = 5;
+const countBuffer = [];
 
-    // ── Verifica suporte à API ──
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      loadingOverlay.innerHTML = `
-        <div style="max-width:300px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center">
-          <p style="color:#ff4d6d;font-weight:700">Câmera não suportada</p>
-          <p style="color:#6b7390;font-size:.8rem">Este navegador não suporta acesso à câmera. Use Chrome, Safari ou Firefox atualizados via HTTPS.</p>
-        </div>`;
-      return;
-    }
+// stats
+let sessMax    = 0;
+let sessFrames = 0;
+let sessStart  = null;
+let fpsCount   = 0;
+let fpsTimer   = performance.now();
+let lastCount  = -1;
 
-    // ── Load model on page load ──
-    cocoSsd.load({ base: 'lite_mobilenet_v2' }).then(m => {
-      model = m;
-      loadingOverlay.classList.add('hidden');
-      setStatus('ready', 'pronto');
-    }).catch(err => {
-      loadingOverlay.classList.add('hidden');
-      setStatus('error', 'erro no modelo');
-      console.error(err);
+// chart data
+const CHART_MAX = 120;
+const chartData = [];
+
+// ── Elements ───────────────────────────────────────────
+const video       = document.getElementById('video');
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const overlay     = document.getElementById('overlay-msg');
+const scanbar     = document.getElementById('scanbar');
+const corners     = ['c-tl','c-tr','c-bl','c-br'].map(id=>document.getElementById(id));
+const videoCount  = document.getElementById('video-count');
+const vcNum       = document.getElementById('vc-num');
+const countNum    = document.getElementById('count-num');
+const arcFill     = document.getElementById('arc-fill');
+const arcText     = document.getElementById('arc-text');
+const confVal     = document.getElementById('conf-val');
+const statMax     = document.getElementById('stat-max');
+const statusPill  = document.getElementById('status-pill');
+const hdrPulse    = document.getElementById('hdr-pulse');
+const btnStart    = document.getElementById('btn-start');
+const btnStop     = document.getElementById('btn-stop');
+const btnCam      = document.getElementById('btn-cam');
+const chkRear     = document.getElementById('chk-rear');
+const chkMirror   = document.getElementById('chk-mirror');
+const chkBoxes    = document.getElementById('chk-boxes');
+const chkSmooth   = document.getElementById('chk-smooth');
+const slThreshold = document.getElementById('sl-threshold');
+const slInterval  = document.getElementById('sl-interval');
+const lblThresh   = document.getElementById('lbl-threshold');
+const lblInterval = document.getElementById('lbl-interval');
+const selRes      = document.getElementById('sel-res');
+const logList     = document.getElementById('log-list');
+const scCur       = document.getElementById('sc-cur');
+const scMax       = document.getElementById('sc-max');
+const scAvg       = document.getElementById('sc-avg');
+const scFrames    = document.getElementById('sc-frames');
+const scFps       = document.getElementById('sc-fps');
+const scTime      = document.getElementById('sc-time');
+const loadOverlay = document.getElementById('loading-overlay');
+const lsTf        = document.getElementById('ls-tf');
+const lsCoco      = document.getElementById('ls-coco');
+const lsBlaze     = document.getElementById('ls-blaze');
+const chartCanvas = document.getElementById('chart');
+const chartCtx    = chartCanvas.getContext('2d');
+
+// ── File:// check ───────────────────────────────────────
+if (location.protocol === 'file:') {
+  loadOverlay.innerHTML = `
+    <div style="max-width:320px;text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center;padding:24px">
+      <div style="font-size:2.5rem">⚠️</div>
+      <p style="color:#ff4d6d;font-weight:700;font-size:.95rem">Arquivo aberto via file://</p>
+      <p style="color:#6b7390;font-size:.78rem;line-height:1.7">
+        O navegador bloqueia câmera em <code style="background:#22283a;padding:2px 6px;border-radius:4px">file://</code> por segurança.<br><br>
+        <strong style="color:#e8eaf0">Para usar, hospede o arquivo:</strong><br><br>
+        📁 <strong>GitHub Pages</strong> — faça push do HTML para um repo e ative Pages<br><br>
+        💻 <strong>Servidor local (Node):</strong><br>
+        <code style="background:#22283a;padding:4px 10px;border-radius:6px;font-size:.72rem;display:inline-block;margin-top:4px">npx serve .</code><br><br>
+        🔌 <strong>VS Code</strong> — extensão <em>Live Server</em>
+      </p>
+    </div>`;
+  return;
+}
+
+// ── API check ───────────────────────────────────────────
+if (!navigator.mediaDevices?.getUserMedia) {
+  loadOverlay.innerHTML = `<div style="text-align:center;color:#ff4d6d;font-size:.85rem;padding:24px">Câmera não suportada neste navegador.<br/>Use Chrome ou Safari via HTTPS.</div>`;
+  return;
+}
+
+// ── Load models ─────────────────────────────────────────
+setStep(lsTf, 'done');
+setStep(lsCoco, 'active');
+
+try {
+  modelCoco = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+  setStep(lsCoco, 'done');
+} catch(e) {
+  setStep(lsCoco, 'error');
+  console.error('COCO-SSD error:', e);
+}
+
+setStep(lsBlaze, 'active');
+try {
+  modelBlaze = await blazeface.load();
+  setStep(lsBlaze, 'done');
+} catch(e) {
+  setStep(lsBlaze, 'error');
+  console.error('BlazeFace error:', e);
+}
+
+loadOverlay.classList.add('hidden');
+setStatus('ready', 'pronto');
+
+function setStep(el, state) {
+  el.className = 'load-step ' + state;
+}
+
+// ── Settings listeners ──────────────────────────────────
+slThreshold.addEventListener('input', () => {
+  threshold = slThreshold.value / 100;
+  lblThresh.textContent = slThreshold.value + '%';
+});
+slInterval.addEventListener('input', () => {
+  detInterval = parseInt(slInterval.value);
+  lblInterval.textContent = slInterval.value + 'ms';
+});
+chkBoxes.addEventListener('change',  () => { showBoxes = chkBoxes.checked; });
+chkSmooth.addEventListener('change', () => { smoothing = chkSmooth.checked; countBuffer.length = 0; });
+
+// settings accordion
+document.getElementById('settings-toggle').addEventListener('click', () => {
+  const p = document.getElementById('settings-panel');
+  const b = document.getElementById('settings-body');
+  if (p.classList.contains('open')) {
+    p.classList.remove('open'); p.classList.add('closed');
+    b.style.display = 'none';
+  } else {
+    p.classList.add('open'); p.classList.remove('closed');
+    b.style.display = '';
+  }
+});
+
+// ── Mode selector ───────────────────────────────────────
+window.setMode = function(m) {
+  mode = m;
+  ['dual','body','face'].forEach(id => {
+    document.getElementById('mode-'+id).classList.toggle('active', id === m);
+  });
+};
+
+// ── Camera toggle button ────────────────────────────────
+btnCam.addEventListener('click', async () => {
+  if (!running) return;
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  await restartStream();
+});
+
+// ── Start ───────────────────────────────────────────────
+btnStart.addEventListener('click', async () => {
+  facingMode = chkRear.checked ? 'environment' : 'user';
+  await startCamera();
+});
+
+async function startCamera() {
+  const res = parseInt(selRes.value);
+  try {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width:  { ideal: res === 480 ? 640  : res === 720 ? 1280 : 1920 },
+        height: { ideal: res === 480 ? 480  : res === 720 ? 720  : 1080 },
+      },
+      audio: false
     });
+    video.srcObject = stream;
 
-    function setStatus(cls, txt) {
-      statusPill.className = 'status-pill ' + cls;
-      statusPill.textContent = txt;
+    // mirror
+    const mirror = chkMirror.checked || facingMode === 'user';
+    video.style.transform = mirror ? 'scaleX(-1)' : 'none';
+
+    await video.play();
+    onCameraReady();
+  } catch(e) {
+    onCameraError(e);
+  }
+}
+
+async function restartStream() {
+  const mirror = facingMode === 'user' || chkMirror.checked;
+  video.style.transform = mirror ? 'scaleX(-1)' : 'none';
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode },
+    audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
+}
+
+function onCameraReady() {
+  overlay.style.display = 'none';
+  scanbar.classList.add('on');
+  corners.forEach(c => c.classList.add('on'));
+  videoCount.classList.add('on');
+  btnStart.disabled = true;
+  btnStop.disabled  = false;
+  btnCam.disabled   = false;
+  hdrPulse.classList.remove('off');
+  setStatus('live', 'ao vivo');
+  running = true;
+  sessStart = Date.now();
+  sessFrames = 0; fpsCount = 0; fpsTimer = performance.now();
+  countBuffer.length = 0;
+  wakeLockAcquire();
+  requestAnimationFrame(loop);
+  setInterval(updateTime, 1000);
+}
+
+function onCameraError(e) {
+  setStatus('error', 'erro');
+  let msg = '⚠️ Não foi possível acessar a câmera.';
+  if (e.name === 'NotAllowedError')    msg = '🔒 Permissão negada. Libere o acesso à câmera nas configurações do navegador.';
+  else if (e.name === 'NotFoundError') msg = '📷 Nenhuma câmera encontrada neste dispositivo.';
+  else if (e.name === 'NotReadableError') msg = '⚠️ Câmera em uso por outro aplicativo.';
+  else if (location.protocol !== 'https:' && location.hostname !== 'localhost')
+    msg = '🔒 Câmera requer HTTPS. Hospede o arquivo em https:// ou use localhost.';
+  overlay.innerHTML = `<div class="om-icon">❌</div><div style="font-size:.78rem;line-height:1.6">${msg}</div>`;
+  overlay.style.display = '';
+}
+
+// ── Stop ────────────────────────────────────────────────
+btnStop.addEventListener('click', stopCamera);
+function stopCamera() {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  overlay.innerHTML = `<div class="om-icon">📷</div><div>Pressione <strong>Iniciar</strong> para ligar a câmera</div>`;
+  overlay.style.display = '';
+  scanbar.classList.remove('on');
+  corners.forEach(c => c.classList.remove('on'));
+  videoCount.classList.remove('on');
+  btnStart.disabled = false;
+  btnStop.disabled  = true;
+  btnCam.disabled   = true;
+  hdrPulse.classList.add('off');
+  setStatus('ready', 'pronto');
+  setCount(0, 0);
+  wakeLockRelease();
+}
+
+// ── Detection loop ──────────────────────────────────────
+async function loop(ts) {
+  if (!running) return;
+  rafId = requestAnimationFrame(loop);
+
+  // throttle by interval
+  if (ts - lastDetect < detInterval) return;
+  lastDetect = ts;
+
+  // sync canvas
+  const vw = video.videoWidth  || 640;
+  const vh = video.videoHeight || 480;
+  if (canvas.width !== vw || canvas.height !== vh) { canvas.width = vw; canvas.height = vh; }
+
+  // draw frame (handle mirror)
+  const mirror = chkMirror.checked || facingMode === 'user';
+  if (mirror) {
+    ctx.save(); ctx.scale(-1,1); ctx.drawImage(video, -vw, 0, vw, vh); ctx.restore();
+  } else {
+    ctx.drawImage(video, 0, 0, vw, vh);
+  }
+
+  // detect
+  let count = 0;
+  let avgConf = 0;
+  const allBoxes = [];
+
+  try {
+    if ((mode === 'dual' || mode === 'body') && modelCoco) {
+      const preds = await modelCoco.detect(canvas);
+      const people = preds.filter(p => p.class === 'person' && p.score >= threshold);
+      people.forEach(p => allBoxes.push({ bbox: p.bbox, score: p.score, type: 'body' }));
     }
 
-    // ── Start ──
-    btnStart.addEventListener('click', async () => {
-      if (!model) return;
-      const facing = chkRear.checked ? 'environment' : 'user';
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } },
-          audio: false
-        });
-        video.srcObject = stream;
-        await video.play();
-
-        overlay.style.display = 'none';
-        scanLine.classList.add('active');
-        btnStart.disabled = true;
-        btnStop.disabled  = false;
-        chkRear.disabled  = true;
-        setStatus('running', 'ao vivo');
-        running = true;
-        fpsTime = performance.now();
-        fpsFrames = 0;
-        detect();
-      } catch (e) {
-        setStatus('error', 'sem acesso');
-        overlay.innerHTML = '⚠️ Permissão de câmera negada ou indisponível.';
-        overlay.style.display = '';
-        console.error(e);
-      }
-    });
-
-    // ── Stop ──
-    btnStop.addEventListener('click', stop);
-    function stop() {
-      running = false;
-      if (rafId) cancelAnimationFrame(rafId);
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      overlay.innerHTML = `
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M15 10l4.553-2.069A1 1 0 0121 8.87V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-        </svg>
-        Pressione <strong>Iniciar</strong> para ligar a câmera`;
-      overlay.style.display = '';
-      scanLine.classList.remove('active');
-      btnStart.disabled = false;
-      btnStop.disabled  = true;
-      chkRear.disabled  = false;
-      setStatus('ready', 'pronto');
-      setCount(0, 0);
-    }
-
-    // ── Detection loop ──
-    async function detect() {
-      if (!running) return;
-
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
-
-      // Mirror canvas to match mirrored video (user-facing)
-      if (!chkRear.checked) {
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-        ctx.restore();
-      } else {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-
-      const predictions = await model.detect(canvas);
-      const people = predictions.filter(p => p.class === 'person' && p.score >= 0.45);
-
-      // Draw boxes
-      if (!chkRear.checked) {
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.translate(-canvas.width, 0);
-      }
-      drawBoxes(people);
-      if (!chkRear.checked) ctx.restore();
-
-      // Update UI
-      const avgConf = people.length
-        ? people.reduce((s, p) => s + p.score, 0) / people.length
-        : 0;
-
-      setCount(people.length, avgConf);
-
-      // FPS
-      fpsFrames++;
-      frameCount++;
-      statFrames.textContent = frameCount;
-      const now = performance.now();
-      if (now - fpsTime >= 1000) {
-        statFps.textContent = fpsFrames;
-        fpsFrames = 0;
-        fpsTime   = now;
-      }
-
-      rafId = requestAnimationFrame(detect);
-    }
-
-    function setCount(n, conf) {
-      const prev = parseInt(countEl.textContent) || 0;
-      countEl.textContent = n;
-      countEl.className = 'count-number' + (n === 0 ? ' zero' : n >= 5 ? ' many' : '');
-
-      if (n !== prev) {
-        countEl.classList.add('bump');
-        setTimeout(() => countEl.classList.remove('bump'), 160);
-      }
-
-      if (n > maxCount) { maxCount = n; statMax.textContent = maxCount; }
-
-      const pct = Math.round(conf * 100);
-      confFill.style.width = (n ? pct : 0) + '%';
-      confPct.textContent  = n ? pct + '%' : '—';
-    }
-
-    function drawBoxes(people) {
-      people.forEach(p => {
-        const [x, y, w, h] = p.bbox;
-        const alpha = 0.5 + p.score * 0.5;
-
-        // Box glow
-        ctx.shadowColor   = '#00e5ff';
-        ctx.shadowBlur    = 12;
-        ctx.strokeStyle   = `rgba(0, 229, 255, ${alpha})`;
-        ctx.lineWidth     = 2;
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, 6);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Label background
-        const label  = `pessoa ${Math.round(p.score * 100)}%`;
-        const fSize  = Math.max(11, Math.min(14, w / 8));
-        ctx.font     = `600 ${fSize}px 'Space Grotesk', sans-serif`;
-        const tw     = ctx.measureText(label).width;
-        const lh     = fSize + 8;
-        const ly     = y > lh + 2 ? y - lh - 2 : y + 2;
-
-        ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
-        ctx.beginPath();
-        ctx.roundRect(x, ly, tw + 12, lh, 4);
-        ctx.fill();
-
-        ctx.fillStyle = `rgba(0, 229, 255, ${alpha})`;
-        ctx.fillText(label, x + 6, ly + lh - 5);
+    if ((mode === 'dual' || mode === 'face') && modelBlaze) {
+      const faces = await modelBlaze.estimateFaces(canvas, false);
+      faces.forEach(f => {
+        if (f.probability[0] < threshold) return;
+        const [x1,y1] = f.topLeft;
+        const [x2,y2] = f.bottomRight;
+        // in dual mode, check overlap with existing body boxes to avoid double counting
+        if (mode === 'dual') {
+          const cx = (x1+x2)/2, cy = (y1+y2)/2;
+          const overlap = allBoxes.some(b => {
+            const [bx,by,bw,bh] = b.bbox;
+            return cx >= bx && cx <= bx+bw && cy >= by && cy <= by+bh;
+          });
+          if (!overlap) allBoxes.push({ bbox:[x1,y1,x2-x1,y2-y1], score:f.probability[0], type:'face' });
+        } else {
+          allBoxes.push({ bbox:[x1,y1,x2-x1,y2-y1], score:f.probability[0], type:'face' });
+        }
       });
     }
+  } catch(e) { /* model error mid-frame, skip */ }
 
-    // Prevent screen sleep while running (if supported)
-    let wakeLock = null;
-    btnStart.addEventListener('click', async () => {
-      try {
-        if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
-      } catch (_) {}
-    });
-    btnStop.addEventListener('click', () => {
-      if (wakeLock) { wakeLock.release(); wakeLock = null; }
-    });
+  count = allBoxes.length;
+  avgConf = count ? allBoxes.reduce((s,b)=>s+b.score,0)/count : 0;
 
-  })();
+  // smoothing
+  if (smoothing) {
+    countBuffer.push(count);
+    if (countBuffer.length > SMOOTH_BUF) countBuffer.shift();
+    const sorted = [...countBuffer].sort((a,b)=>a-b);
+    count = sorted[Math.floor(sorted.length/2)]; // median
+  }
+
+  // draw boxes
+  if (showBoxes) drawBoxes(allBoxes, mirror, vw);
+
+  // update UI
+  setCount(count, avgConf);
+
+  // fps
+  sessFrames++; fpsCount++;
+  scFrames.textContent = sessFrames;
+  const now = performance.now();
+  if (now - fpsTimer >= 1000) {
+    scFps.textContent = fpsCount;
+    fpsCount = 0; fpsTimer = now;
+  }
+
+  // chart
+  chartData.push(count);
+  if (chartData.length > CHART_MAX) chartData.shift();
+  drawChart();
+}
+
+// ── Draw boxes ──────────────────────────────────────────
+function drawBoxes(boxes, mirror, vw) {
+  boxes.forEach(b => {
+    let [x, y, w, h] = b.bbox;
+    if (mirror) x = vw - x - w;
+
+    const isBody = b.type === 'body';
+    const color  = isBody ? '#00e5ff' : '#7b5fff';
+    const alpha  = 0.45 + b.score * 0.55;
+
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 10;
+    ctx.strokeStyle = `rgba(${isBody ? '0,229,255' : '123,95,255'},${alpha})`;
+    ctx.lineWidth   = isBody ? 2 : 1.5;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 5); else ctx.rect(x, y, w, h);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // dot at center top
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + w/2, y, 3, 0, Math.PI*2);
+    ctx.fill();
+
+    // label
+    const pct   = Math.round(b.score * 100);
+    const label = isBody ? `👤 ${pct}%` : `😶 ${pct}%`;
+    const fs    = Math.max(10, Math.min(13, w/7));
+    ctx.font    = `600 ${fs}px Space Grotesk,sans-serif`;
+    const tw    = ctx.measureText(label).width;
+    const lh    = fs + 8;
+    const lx    = Math.max(0, Math.min(x, canvas.width - tw - 12));
+    const ly    = y > lh + 2 ? y - lh - 2 : y + h + 2;
+
+    ctx.fillStyle = `rgba(${isBody ? '0,229,255' : '123,95,255'},.15)`;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(lx, ly, tw+12, lh, 4); else ctx.rect(lx, ly, tw+12, lh);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(${isBody ? '0,229,255' : '180,160,255'},${alpha})`;
+    ctx.fillText(label, lx+6, ly+lh-4);
+  });
+}
+
+// ── Chart ───────────────────────────────────────────────
+function drawChart() {
+  const W = chartCanvas.offsetWidth * devicePixelRatio;
+  const H = 90 * devicePixelRatio;
+  if (chartCanvas.width !== W) { chartCanvas.width = W; chartCanvas.height = H; }
+  chartCtx.clearRect(0, 0, W, H);
+  if (chartData.length < 2) return;
+
+  const max   = Math.max(...chartData, 1);
+  const pad   = 6;
+  const usableW = W - pad*2;
+  const usableH = H - pad*2;
+  const step  = usableW / (CHART_MAX - 1);
+
+  // grid lines
+  chartCtx.strokeStyle = '#22283a';
+  chartCtx.lineWidth   = 1;
+  [0.25, 0.5, 0.75, 1].forEach(t => {
+    const y = pad + usableH * (1 - t);
+    chartCtx.beginPath(); chartCtx.moveTo(pad, y); chartCtx.lineTo(W-pad, y); chartCtx.stroke();
+  });
+
+  // fill
+  const grad = chartCtx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(0,229,255,.3)');
+  grad.addColorStop(1, 'rgba(0,229,255,0)');
+
+  const startI = CHART_MAX - chartData.length;
+  chartCtx.beginPath();
+  chartData.forEach((v, i) => {
+    const x = pad + (startI + i) * step;
+    const y = pad + usableH * (1 - v/max);
+    i === 0 ? chartCtx.moveTo(x, y) : chartCtx.lineTo(x, y);
+  });
+  const lastX = pad + (startI + chartData.length - 1) * step;
+  chartCtx.lineTo(lastX, H); chartCtx.lineTo(pad + startI*step, H); chartCtx.closePath();
+  chartCtx.fillStyle = grad; chartCtx.fill();
+
+  // line
+  chartCtx.beginPath();
+  chartData.forEach((v, i) => {
+    const x = pad + (startI + i) * step;
+    const y = pad + usableH * (1 - v/max);
+    i === 0 ? chartCtx.moveTo(x, y) : chartCtx.lineTo(x, y);
+  });
+  chartCtx.strokeStyle = '#00e5ff'; chartCtx.lineWidth = 2*devicePixelRatio;
+  chartCtx.lineJoin = 'round'; chartCtx.stroke();
+
+  // current point
+  const lastVal = chartData[chartData.length-1];
+  const px = pad + (startI + chartData.length - 1) * step;
+  const py = pad + usableH * (1 - lastVal/max);
+  chartCtx.beginPath(); chartCtx.arc(px, py, 3*devicePixelRatio, 0, Math.PI*2);
+  chartCtx.fillStyle = '#00e5ff'; chartCtx.fill();
+}
+
+document.getElementById('btn-clr-chart').addEventListener('click', () => {
+  chartData.length = 0; drawChart();
+});
+
+// ── Count UI ────────────────────────────────────────────
+function setCount(n, conf) {
+  const prev = parseInt(countNum.textContent) || 0;
+
+  // smoothed display
+  countNum.textContent = n;
+  vcNum.textContent    = n;
+  scCur.textContent    = n;
+
+  countNum.className = 'count-num' + (n === 0 ? ' zero' : n >= 20 ? ' crowd' : '');
+
+  if (n !== prev) {
+    countNum.classList.add('bump');
+    setTimeout(() => countNum.classList.remove('bump'), 130);
+  }
+
+  // max
+  if (n > sessMax) {
+    sessMax = n;
+    statMax.textContent = sessMax;
+    scMax.textContent   = sessMax;
+  }
+
+  // avg
+  if (chartData.length) {
+    const avg = (chartData.reduce((a,b)=>a+b,0)/chartData.length).toFixed(1);
+    scAvg.textContent = avg;
+  }
+
+  // arc
+  const circ = 138.2;
+  const offset = circ * (1 - conf);
+  arcFill.style.strokeDashoffset = n ? offset : circ;
+  const pct = n ? Math.round(conf*100) : 0;
+  arcText.textContent = n ? pct+'%' : '—';
+  confVal.textContent = n ? pct+'%' : '—';
+
+  // log
+  if (running && n !== lastCount && lastCount >= 0) {
+    addLog(n, lastCount);
+  }
+  if (running) lastCount = n;
+}
+
+// ── Log ─────────────────────────────────────────────────
+function addLog(cur, prev) {
+  const empty = logList.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const delta = cur - prev;
+  const sign  = delta > 0 ? '+' : '';
+  const cls   = delta > 0 ? 'up' : delta < 0 ? 'dn' : 'eq';
+  const now   = new Date();
+  const time  = now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `
+    <span class="le-time">${time}</span>
+    <span>${prev} → <strong class="le-val">${cur}</strong></span>
+    <span class="le-delta ${cls}">${sign}${delta}</span>`;
+
+  logList.insertBefore(entry, logList.firstChild);
+  // keep max 50 entries
+  while (logList.children.length > 50) logList.removeChild(logList.lastChild);
+}
+
+document.getElementById('btn-clr-log').addEventListener('click', () => {
+  logList.innerHTML = '<div class="log-empty">Nenhuma variação registrada ainda.</div>';
+  lastCount = -1;
+});
+
+// ── Time ────────────────────────────────────────────────
+function updateTime() {
+  if (!sessStart) return;
+  const s = Math.floor((Date.now() - sessStart) / 1000);
+  const m = Math.floor(s/60);
+  scTime.textContent = `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+
+// ── Status ──────────────────────────────────────────────
+function setStatus(cls, txt) {
+  statusPill.className = 'pill ' + cls;
+  statusPill.textContent = txt;
+}
+
+// ── Wake Lock ───────────────────────────────────────────
+let wakeLock = null;
+async function wakeLockAcquire() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(_){}
+}
+function wakeLockRelease() {
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', async () => {
+  if (running && document.visibilityState === 'visible') await wakeLockAcquire();
+});
+
+})();
 </script>
 </body>
 </html>
